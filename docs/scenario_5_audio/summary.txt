@@ -1,0 +1,1 @@
+Learned after 3 pulses at 4.6s, detected break at 7.7s (duration), 11% of snore energy cancelled, background (amp=0.0030) preserved.

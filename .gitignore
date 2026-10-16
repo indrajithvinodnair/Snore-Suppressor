@@ -1,0 +1,7 @@
+.venv/
+outputs/
+__pycache__/
+*.py[cod]
+.idea/
+.claude/
+*.Zone.Identifier

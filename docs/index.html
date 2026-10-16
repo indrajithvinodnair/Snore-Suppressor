@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snore Suppressor</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --card: #fff; --border: #ddd;
+    --green: #4caf50; --red: #e53935; --orange: #ff6600;
+    --text: #222; --muted: #666;
+  }
+  body { margin: 0; padding: 16px; background: var(--bg); font-family: system-ui, sans-serif;
+          color: var(--text); font-size: 14px; }
+  .page-header { margin-bottom: 12px; }
+  h1   { margin: 0 0 4px; font-size: 22px; }
+  .page-subtitle { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .toolbar button { padding: 6px 14px; border: none; border-radius: 4px;
+                     background: var(--green); color: #fff; cursor: pointer; font-size: 13px; }
+  .toolbar button:hover { opacity: 0.85; }
+  .toolbar .hint { color: var(--muted); font-size: 12px; }
+  .card  { background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+            padding: 16px; margin-bottom: 16px; }
+  h2   { margin: 0 0 12px; font-size: 16px; }
+  .modes { display: flex; gap: 16px; flex-wrap: wrap; }
+  .mode-col { flex: 1; min-width: 320px; }
+  .mode-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                 color: var(--muted); margin-bottom: 4px; letter-spacing: 0.5px; }
+  .summary-text { font-size: 12px; color: var(--muted); margin-bottom: 8px;
+                   background: #f9f9f9; border-radius: 4px; padding: 6px 8px;
+                   border-left: 3px solid var(--green); }
+  .waveform { width: 100%; border-radius: 4px; margin-bottom: 8px; }
+  .audio-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .audio-row span { font-size: 12px; width: 68px; color: var(--muted); flex-shrink: 0; }
+  .audio-wrap { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  audio { width: 100%; height: 32px; }
+  .pulse-strip {
+    position: relative; height: 10px; border-radius: 3px;
+    background: #e0e0e0; overflow: hidden; cursor: default;
+  }
+  .pulse-block {
+    position: absolute; top: 0; bottom: 0; border-radius: 1px;
+  }
+  .pulse-block.cancelled { background: #ff6600; opacity: 0.85; }
+  .pulse-block.kept      { background: #4caf50; opacity: 0.75; }
+  .pulse-playhead {
+    position: absolute; top: 0; bottom: 0; width: 2px; left: 0;
+    background: #333; opacity: 0.7; z-index: 5; pointer-events: none;
+  }
+  .remarks-area { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .remarks-area label { font-size: 12px; font-weight: 700; color: var(--text);
+                          display: block; margin-bottom: 4px; }
+  .remarks-hint { margin: 0 0 6px; font-size: 11px; color: var(--muted); font-style: italic; }
+  textarea.remarks { width: 100%; box-sizing: border-box; border: 1px solid var(--border);
+                      border-radius: 4px; padding: 6px 8px; font-size: 13px;
+                      resize: vertical; font-family: inherit; }
+  textarea.remarks:focus { outline: none; border-color: var(--green); }
+  .scenarios-group { margin-bottom: 16px; }
+  .scenarios-group > summary {
+    cursor: pointer; padding: 10px 14px; border-radius: 6px;
+    background: var(--card); border: 1px solid var(--border);
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    list-style: none; display: flex; align-items: center; gap: 8px;
+    user-select: none;
+  }
+  .scenarios-group > summary::before { content: "▶"; font-size: 10px; transition: transform 0.15s; }
+  .scenarios-group[open] > summary::before { transform: rotate(90deg); }
+  .scenarios-group > summary::-webkit-details-marker { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1a1a1a; --card: #242424; --border: #383838;
+             --text: #e8e8e8; --muted: #999; }
+    textarea.remarks { background: #2a2a2a; color: var(--text); }
+    .summary-text { background: #2a2a2a; }
+    .pulse-strip { background: #333; }
+    .pulse-playhead { background: #fff; opacity: 0.8; }
+  }
+</style>
+</head>
+<body>
+<div class="page-header">
+  <h1>🔇 Snore Suppressor</h1>
+  <p class="page-subtitle">A PoC — detect rhythmic snoring, learn its signature, cancel it.</p>
+</div>
+<div class="toolbar">
+  <button onclick="exportRemarks()">Save remarks.txt</button>
+  <span class="hint">
+    <strong>Save remarks.txt → share with Claude → it reads your notes and iterates on the results.</strong>
+    <span style="margin-left:16px">
+      <span style="display:inline-block;width:10px;height:10px;background:#ff6600;border-radius:2px;vertical-align:middle"></span> cancelled &nbsp;
+      <span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:2px;vertical-align:middle"></span> kept
+    </span>
+  </span>
+</div>
+
+
+        <div class="card" id="audio_real-friend-snoring-extended">
+          <h2>Real Friend Snoring (Quiet Room)</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 7.5s, no breaks detected, 9 extracted / 6 cancelled.</div>
+              <img src="audio_real-friend-snoring-extended/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-audio_real-friend-snoring-extended-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-audio_real-friend-snoring-extended-orig" controls preload="metadata" src="audio_real-friend-snoring-extended/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-audio_real-friend-snoring-extended-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-audio_real-friend-snoring-extended-proc" controls preload="metadata" src="audio_real-friend-snoring-extended/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="audio_real-friend-snoring-extended" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <details class="scenarios-group">
+          <summary>Test Scenarios</summary>
+          
+        <div class="card" id="s1">
+          <h2>Scenario 1 — Steady rhythm</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 4.6s, no breaks detected, 48% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_1_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_1_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_1_audio-orig" controls preload="metadata" src="scenario_1_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_1_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_1_audio-proc" controls preload="metadata" src="scenario_1_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s1" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s2">
+          <h2>Scenario 2 — Steady + jitter</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 4.6s, no breaks detected, 52% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_2_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_2_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_2_audio-orig" controls preload="metadata" src="scenario_2_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_2_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_2_audio-proc" controls preload="metadata" src="scenario_2_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s2" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s3">
+          <h2>Scenario 3 — Rhythm change at 6 s</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 4.6s, detected break at 9.1s (rhythm-timeout), 19% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_3_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_3_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_3_audio-orig" controls preload="metadata" src="scenario_3_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_3_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_3_audio-proc" controls preload="metadata" src="scenario_3_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s3" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s4">
+          <h2>Scenario 4 — Amplitude change at 7.5 s</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 4.6s, detected break at 7.6s (amplitude), 22% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_4_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_4_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_4_audio-orig" controls preload="metadata" src="scenario_4_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_4_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_4_audio-proc" controls preload="metadata" src="scenario_4_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s4" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s5">
+          <h2>Scenario 5 — Duration change at 7.5 s</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Learned after 3 pulses at 4.6s, detected break at 7.7s (duration), 11% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_5_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_5_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_5_audio-orig" controls preload="metadata" src="scenario_5_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_5_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_5_audio-proc" controls preload="metadata" src="scenario_5_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s5" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s6">
+          <h2>Scenario 6 — Irregular pulses</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Never locked into a pattern, 0% of snore energy cancelled, background (amp=0.0030) preserved.</div>
+              <img src="scenario_6_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_6_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_6_audio-orig" controls preload="metadata" src="scenario_6_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_6_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_6_audio-proc" controls preload="metadata" src="scenario_6_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s6" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s7">
+          <h2>Scenario 7 — Background noise only</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Never locked into a pattern, background (amp=0.0030) preserved.</div>
+              <img src="scenario_7_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_7_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_7_audio-orig" controls preload="metadata" src="scenario_7_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_7_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_7_audio-proc" controls preload="metadata" src="scenario_7_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s7" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        <div class="card" id="s8">
+          <h2>Scenario 8 — Silence</h2>
+          <div class="modes">
+            <div class="mode-col">
+              
+              <div class="summary-text">Never locked into a pattern, background (amp=0.0000) preserved.</div>
+              <img src="scenario_8_audio/waveform.png" class="waveform" loading="lazy">
+              
+          <div class="audio-row">
+            <span>Original</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_8_audio-orig"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_8_audio-orig" controls preload="metadata" src="scenario_8_audio/original.wav"></audio>
+            </div>
+          </div>
+              
+          <div class="audio-row">
+            <span>Processed</span>
+            <div class="audio-wrap">
+              <div class="pulse-strip" id="strip-scenario_8_audio-proc"><div class="pulse-playhead"></div></div>
+              <audio class="audio-with-strip" data-strip="strip-scenario_8_audio-proc" controls preload="metadata" src="scenario_8_audio/processed.wav"></audio>
+            </div>
+          </div>
+            </div></div>
+          <div class="remarks-area">
+            <label>Observations for Claude</label>
+            <p class="remarks-hint">Type here, hit "Save remarks.txt", then share the file with Claude — it reads your notes and iterates on the results.</p>
+            <textarea class="remarks" data-id="s8" rows="3"
+              placeholder="e.g. 'The second snore is barely audible after processing but the third is still clearly there...'"></textarea>
+          </div>
+        </div>
+        </details>
+
+<script>
+var PULSE_DATA = {"strip-audio_real-friend-snoring-extended-orig": {"duration": 30.8148125, "pulses": [{"onset": 0.34, "duration": 1.26, "cancelled": false}, {"onset": 4.05, "duration": 0.9800000000000004, "cancelled": false}, {"onset": 7.49, "duration": 0.9399999999999995, "cancelled": false}, {"onset": 10.9, "duration": 0.9599999999999991, "cancelled": true}, {"onset": 14.32, "duration": 0.9800000000000004, "cancelled": true}, {"onset": 17.77, "duration": 0.9400000000000013, "cancelled": true}, {"onset": 21.17, "duration": 0.9799999999999969, "cancelled": true}, {"onset": 24.59, "duration": 0.9800000000000004, "cancelled": true}, {"onset": 28.02, "duration": 0.9699999999999989, "cancelled": true}]}, "strip-audio_real-friend-snoring-extended-proc": {"duration": 30.8148125, "pulses": [{"onset": 0.34, "duration": 1.26, "cancelled": false}, {"onset": 4.05, "duration": 0.9800000000000004, "cancelled": false}, {"onset": 7.49, "duration": 0.9399999999999995, "cancelled": false}, {"onset": 10.9, "duration": 0.9599999999999991, "cancelled": true}, {"onset": 14.32, "duration": 0.9800000000000004, "cancelled": true}, {"onset": 17.77, "duration": 0.9400000000000013, "cancelled": true}, {"onset": 21.17, "duration": 0.9799999999999969, "cancelled": true}, {"onset": 24.59, "duration": 0.9800000000000004, "cancelled": true}, {"onset": 28.02, "duration": 0.9699999999999989, "cancelled": true}]}, "strip-scenario_1_audio-orig": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.56281179138322, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 9.049433106575965, "duration": 0.31927437641723355, "cancelled": true}]}, "strip-scenario_1_audio-proc": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.56281179138322, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 9.049433106575965, "duration": 0.31927437641723355, "cancelled": true}]}, "strip-scenario_2_audio-orig": {"duration": 10.0, "pulses": [{"onset": 1.5963718820861679, "duration": 0.33922902494331064, "cancelled": false}, {"onset": 3.0430839002267573, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.639455782312925, "duration": 0.29931972789115646, "cancelled": false}, {"onset": 6.106122448979592, "duration": 0.309297052154195, "cancelled": true}, {"onset": 7.463038548752834, "duration": 0.309297052154195, "cancelled": true}, {"onset": 9.169160997732426, "duration": 0.31927437641723355, "cancelled": true}]}, "strip-scenario_2_audio-proc": {"duration": 10.0, "pulses": [{"onset": 1.5963718820861679, "duration": 0.33922902494331064, "cancelled": false}, {"onset": 3.0430839002267573, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.639455782312925, "duration": 0.29931972789115646, "cancelled": false}, {"onset": 6.106122448979592, "duration": 0.309297052154195, "cancelled": true}, {"onset": 7.463038548752834, "duration": 0.309297052154195, "cancelled": true}, {"onset": 9.169160997732426, "duration": 0.31927437641723355, "cancelled": true}]}, "strip-scenario_3_audio-orig": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 9.059410430839002, "duration": 0.309297052154195, "cancelled": false}]}, "strip-scenario_3_audio-proc": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 9.059410430839002, "duration": 0.309297052154195, "cancelled": false}]}, "strip-scenario_4_audio-orig": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.612698412698412, "duration": 0.22947845804988662, "cancelled": false}, {"onset": 9.089342403628118, "duration": 0.2494331065759637, "cancelled": false}]}, "strip-scenario_4_audio-proc": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.612698412698412, "duration": 0.22947845804988662, "cancelled": false}, {"onset": 9.089342403628118, "duration": 0.2494331065759637, "cancelled": false}]}, "strip-scenario_5_audio-orig": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.6526077097505665, "duration": 0.61859410430839, "cancelled": false}, {"onset": 9.129251700680273, "duration": 0.61859410430839, "cancelled": false}]}, "strip-scenario_5_audio-proc": {"duration": 10.0, "pulses": [{"onset": 1.5365079365079366, "duration": 0.3292517006802721, "cancelled": false}, {"onset": 3.0630385487528344, "duration": 0.31927437641723355, "cancelled": false}, {"onset": 4.579591836734694, "duration": 0.2693877551020408, "cancelled": false}, {"onset": 6.066213151927438, "duration": 0.29931972789115646, "cancelled": true}, {"onset": 7.6526077097505665, "duration": 0.61859410430839, "cancelled": false}, {"onset": 9.129251700680273, "duration": 0.61859410430839, "cancelled": false}]}, "strip-scenario_6_audio-orig": {"duration": 10.0, "pulses": [{"onset": 0.3292517006802721, "duration": 0.309297052154195, "cancelled": false}, {"onset": 0.7882086167800454, "duration": 0.2893424036281179, "cancelled": false}, {"onset": 4.160544217687074, "duration": 0.17959183673469387, "cancelled": false}, {"onset": 4.779138321995465, "duration": 0.2594104308390023, "cancelled": false}, {"onset": 8.321088435374149, "duration": 0.18956916099773244, "cancelled": false}, {"onset": 8.770068027210884, "duration": 0.20952380952380953, "cancelled": false}]}, "strip-scenario_6_audio-proc": {"duration": 10.0, "pulses": [{"onset": 0.3292517006802721, "duration": 0.309297052154195, "cancelled": false}, {"onset": 0.7882086167800454, "duration": 0.2893424036281179, "cancelled": false}, {"onset": 4.160544217687074, "duration": 0.17959183673469387, "cancelled": false}, {"onset": 4.779138321995465, "duration": 0.2594104308390023, "cancelled": false}, {"onset": 8.321088435374149, "duration": 0.18956916099773244, "cancelled": false}, {"onset": 8.770068027210884, "duration": 0.20952380952380953, "cancelled": false}]}, "strip-scenario_7_audio-orig": {"duration": 10.0, "pulses": []}, "strip-scenario_7_audio-proc": {"duration": 10.0, "pulses": []}, "strip-scenario_8_audio-orig": {"duration": 10.0, "pulses": []}, "strip-scenario_8_audio-proc": {"duration": 10.0, "pulses": []}};
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Build pulse blocks for each strip
+  Object.keys(PULSE_DATA).forEach(function(stripId) {
+    var strip = document.getElementById(stripId);
+    var data  = PULSE_DATA[stripId];
+    if (!strip || !data || !data.pulses) return;
+    var head = strip.querySelector('.pulse-playhead');
+    data.pulses.forEach(function(p) {
+      var block = document.createElement('div');
+      block.className = 'pulse-block ' + (p.cancelled ? 'cancelled' : 'kept');
+      block.style.left  = (p.onset    / data.duration * 100) + '%';
+      block.style.width = Math.max(p.duration / data.duration * 100, 0.4) + '%';
+      strip.insertBefore(block, head);
+    });
+  });
+
+  // Playhead sync
+  document.querySelectorAll('audio.audio-with-strip').forEach(function(audio) {
+    var strip = document.getElementById(audio.dataset.strip);
+    if (!strip) return;
+    var head = strip.querySelector('.pulse-playhead');
+    audio.addEventListener('timeupdate', function() {
+      if (!audio.duration) return;
+      head.style.left = (audio.currentTime / audio.duration * 100) + '%';
+    });
+    // click strip to seek
+    strip.addEventListener('click', function(e) {
+      if (!audio.duration) return;
+      var rect = strip.getBoundingClientRect();
+      audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+    });
+    strip.style.cursor = 'pointer';
+  });
+
+  // Remarks persistence
+  document.querySelectorAll('.remarks').forEach(function(ta) {
+    var key = 'snore:remarks:' + ta.dataset.id;
+    ta.value = localStorage.getItem(key) || '';
+    ta.addEventListener('input', function() { localStorage.setItem(key, ta.value); });
+  });
+});
+
+function exportRemarks() {
+  var lines = [];
+  document.querySelectorAll('.remarks').forEach(function(ta) {
+    var text = ta.value.trim();
+    if (text) {
+      lines.push('[' + ta.dataset.id + ']');
+      lines.push(text);
+      lines.push('');
+    }
+  });
+  if (!lines.length) { alert('No remarks yet.'); return; }
+  var blob = new Blob([lines.join('\n')], {type: 'text/plain'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'remarks.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+</script>
+</body>
+</html>
