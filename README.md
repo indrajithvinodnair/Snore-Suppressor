@@ -2,7 +2,7 @@
 
 Rule-based snore detection and ANC-style cancellation. No ML.
 
-**[Live dashboard →](https://indrajithvinodnair.github.io/snore-suppressor/)**
+**[Live dashboard →]([https://indrajithvinodnair.github.io/snore-suppressor/](https://indrajithvinodnair.github.io/Snore-Suppressor/))**
 
 ---
 
