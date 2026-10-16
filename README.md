@@ -136,6 +136,8 @@ uv sync
 # Serve and view dashboard
 python3 -m http.server 8765 --directory outputs
 # open http://localhost:8765/dashboard.html
+# You can capture your observations afer listening to the original vs processed audio
+# and record observations that will be saved to a txt file which claude would read
 
 # Run automated checks only
 .venv/bin/python tests/check_scenarios.py
